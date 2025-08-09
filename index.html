@@ -31,22 +31,61 @@
     padding:12px;
     box-sizing:border-box;
   }
-  #game{
-    position:relative;
-    width: min(920px, 100vw - 24px);
-    aspect-ratio: 16 / 9;
-    box-shadow:0 18px 40px var(--shadow);
-    border-radius:16px;
-    overflow:hidden;
-    background: linear-gradient(180deg,#9ae6ff,#8ec5ff 65%);
+#game{
+  position:relative;
+  width: min(920px, 100vw - 24px);
+  aspect-ratio: 16 / 9;
+  box-shadow:0 18px 40px rgba(0,0,0,.25);
+  border-radius:16px;
+  overflow:hidden;
+  background: linear-gradient(180deg,#9ae6ff,#8ec5ff 65%);
+}
+
+/* New top bar that sits above the canvas */
+.topbar{
+  height:48px;
+  background:rgba(255,255,255,.9);
+  border-bottom:1px solid rgba(0,0,0,.08);
+  display:flex;
+  align-items:center;
+  padding:0 10px;
+}
+
+/* HUD sits inside the top bar now */
+.hud{
+  display:flex;
+  width:100%;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+}
+
+/* Make the canvas live below the bar */
+#c{
+  position:absolute;
+  top:48px;
+  left:0; right:0; bottom:0;
+  width:100%; height:auto;
+}
+
+/* Slightly smaller badges so they take less space */
+.pill, .badge{ padding:6px 10px; font-size:14px; }
   }
   canvas{ display:block; width:100%; height:100%; background:transparent; }
 
   /* Top HUD */
-  .hud{
-    position:absolute; inset:12px 12px auto 12px;
-    display:flex; gap:12px; align-items:center; justify-content:space-between;
-    pointer-events:none;
+  .<div class="topbar">
+  <div class="hud">
+    <div class="left">
+      <span class="pill">🏃‍♂️ Jumping Ball Runner</span>
+      <span class="badge">Speed: <span id="speed">1.0x</span></span>
+    </div>
+    <div class="right">
+      <span class="badge">Score: <span id="score">0</span></span>
+      <span class="badge">Best: <span id="best">0</span></span>
+    </div>
+  </div>
+</div>
   }
   .pill{
     background:rgba(255,255,255,.85);
