@@ -249,9 +249,9 @@
 
   // Game state
   const GROUND_H = 84;
-  const gravity = 1600;
-  const jumpVel = 640;
-  const holdBoost = 900;
+  const gravity = 2600;
+const jumpVel = 600;
+const holdBoost = 350;
   let player, obstacles, stars, clouds, hills, tPrev, running = false, paused = false;
   let speed = 260;
   let speedMul = 1;
@@ -411,6 +411,17 @@
     // physics
     if(!player.onGround){
       player.vy += gravity * dt;
+      // Stronger platformer feel
+const fallMul = 1.4;      // faster descent
+const lowJumpMul = 2.0;   // shorter hop if you release early
+
+if (player.vy > 0) {
+  // Falling
+  player.vy += gravity * (fallMul - 1) * dt;
+} else if (player.vy < 0 && !jumpHeld) {
+  // Rising but jump not held, cut the float
+  player.vy += gravity * (lowJumpMul - 1) * dt;
+}
       if(jumpHeld && player.vy < 0) player.vy -= holdBoost * dt;
       player.y += player.vy * dt;
       player.tilt = Math.max(-0.35, Math.min(0.5, player.vy / 900));
