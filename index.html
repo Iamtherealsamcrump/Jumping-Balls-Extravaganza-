@@ -1,0 +1,500 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1" />
+<title>Jumping Ball Runner</title>
+<style>
+  :root{
+    --sky1:#7dd3fc;
+    --sky2:#60a5fa;
+    --ground:#2dd4bf;
+    --ui:#0f172a;
+    --white:#fff;
+    --accent:#f59e0b;
+    --danger:#ef4444;
+    --shadow: rgba(0,0,0,.25);
+  }
+  html,body{
+    height:100%;
+    margin:0;
+    background:linear-gradient(180deg,var(--sky1),var(--sky2) 70%);
+    font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+    color:var(--ui);
+    overflow:hidden;
+  }
+  .wrap{
+    height:100%;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    padding:12px;
+    box-sizing:border-box;
+  }
+  #game{
+    position:relative;
+    width: min(920px, 100vw - 24px);
+    aspect-ratio: 16 / 9;
+    box-shadow:0 18px 40px var(--shadow);
+    border-radius:16px;
+    overflow:hidden;
+    background: linear-gradient(180deg,#9ae6ff,#8ec5ff 65%);
+  }
+  canvas{ display:block; width:100%; height:100%; background:transparent; }
+
+  /* Top HUD */
+  .hud{
+    position:absolute; inset:12px 12px auto 12px;
+    display:flex; gap:12px; align-items:center; justify-content:space-between;
+    pointer-events:none;
+  }
+  .pill{
+    background:rgba(255,255,255,.85);
+    color:#0b172a;
+    border-radius:999px;
+    padding:8px 14px;
+    font-weight:700;
+    box-shadow:0 6px 16px var(--shadow);
+  }
+  .left, .right{ display:flex; gap:8px; align-items:center; }
+  .badge{ background:rgba(255,255,255,.9); padding:6px 10px; border-radius:12px; font-weight:700; }
+
+  /* Center overlays */
+  .center{
+    position:absolute; inset:0;
+    display:flex; align-items:center; justify-content:center;
+    text-align:center;
+  }
+  .panel{
+    background:rgba(255,255,255,.93);
+    padding:22px 20px;
+    border-radius:16px;
+    box-shadow:0 18px 40px var(--shadow);
+    max-width:min(520px, 92%);
+  }
+  h1{
+    margin:0 0 6px 0;
+    font-size: clamp(20px, 3.6vw, 32px);
+  }
+  p{ margin:8px 0; }
+  .btn{
+    appearance:none; border:0; cursor:pointer; font-weight:900;
+    border-radius:12px; padding:12px 18px; margin-top:10px;
+    background:linear-gradient(135deg,#34d399,#22c55e);
+    color:#04210f; box-shadow:0 10px 24px var(--shadow);
+  }
+  .btn.secondary{ background:linear-gradient(135deg,#fde047,#f59e0b); color:#3b2600; }
+  .btn:active{ transform:translateY(1px); }
+  .hint{ font-size: 12px; opacity:.7; }
+
+  /* Mobile controls helper */
+  .controls{
+    position:absolute; inset:auto 0 8px 0;
+    display:flex; justify-content:center; gap:10px;
+    pointer-events:auto;
+  }
+  .tap{
+    padding:10px 14px; background:rgba(255,255,255,.75);
+    border-radius:999px; font-weight:800; box-shadow:0 8px 16px var(--shadow);
+    user-select:none;
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div id="game">
+    <canvas id="c"></canvas>
+
+    <div class="hud">
+      <div class="left">
+        <span class="pill">🏃‍♂️ Jumping Ball Runner</span>
+        <span class="badge">Speed: <span id="speed">1.0x</span></span>
+      </div>
+      <div class="right">
+        <span class="badge">Score: <span id="score">0</span></span>
+        <span class="badge">Best: <span id="best">0</span></span>
+      </div>
+    </div>
+
+    <div class="center" id="startOverlay">
+      <div class="panel">
+        <h1>Jumping Ball Runner</h1>
+        <p>Jump over goofy obstacles, snag stars, and survive as long as you can. Speed rises over time.</p>
+        <p class="hint">Press Space or Up Arrow, or tap the screen to jump. Hold for a bigger hop. Press P to pause.</p>
+        <button class="btn" id="startBtn">Start</button>
+        <button class="btn secondary" id="muteBtn">Toggle Sound</button>
+      </div>
+    </div>
+
+    <div class="center" id="gameOver" style="display:none;">
+      <div class="panel">
+        <h1>Bonk. Game Over</h1>
+        <p>Your score: <b><span id="finalScore">0</span></b></p>
+        <p>Best: <b><span id="finalBest">0</span></b></p>
+        <button class="btn" id="retryBtn">Retry</button>
+      </div>
+    </div>
+
+    <div class="controls">
+      <div class="tap" id="jumpTap">Tap to Jump</div>
+    </div>
+  </div>
+</div>
+
+<script>
+(() => {
+  // Canvas setup
+  const canvas = document.getElementById('c');
+  const ctx = canvas.getContext('2d', { alpha: true });
+  const gameEl = document.getElementById('game');
+  let W = 960, H = 540;
+  function fit() {
+    const r = gameEl.getBoundingClientRect();
+    canvas.width = Math.floor(r.width * devicePixelRatio);
+    canvas.height = Math.floor(r.height * devicePixelRatio);
+    ctx.setTransform(devicePixelRatio, 0, 0, devicePixelRatio, 0, 0);
+    W = r.width; H = r.height;
+  }
+  new ResizeObserver(fit).observe(gameEl); fit();
+
+  // UI elements
+  const elScore = document.getElementById('score');
+  const elBest = document.getElementById('best');
+  const elSpeed = document.getElementById('speed');
+  const startOverlay = document.getElementById('startOverlay');
+  const gameOverOverlay = document.getElementById('gameOver');
+  const finalScore = document.getElementById('finalScore');
+  const finalBest = document.getElementById('finalBest');
+  const startBtn = document.getElementById('startBtn');
+  const retryBtn = document.getElementById('retryBtn');
+  const muteBtn = document.getElementById('muteBtn');
+  const jumpTap = document.getElementById('jumpTap');
+
+  // Audio, lightweight with WebAudio
+  const AudioFX = (() => {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    let muted = false;
+    const base = 220;
+    function beep(type='sine', semis=0, t=0.12, vol=0.3){
+      if(muted) return;
+      const o = ctx.createOscillator();
+      const g = ctx.createGain();
+      o.type = type;
+      o.frequency.value = base * Math.pow(2, semis/12);
+      g.gain.value = vol;
+      o.connect(g); g.connect(ctx.destination);
+      const now = ctx.currentTime;
+      g.gain.setValueAtTime(vol, now);
+      g.gain.exponentialRampToValueAtTime(0.001, now + t);
+      o.start(now);
+      o.stop(now + t);
+    }
+    function bounce(){ beep('sine', 7, 0.12, 0.35); }
+    function coin(){ beep('triangle', 12, 0.16, 0.35); setTimeout(()=>beep('triangle', 19, 0.12, 0.28), 60); }
+    function bonk(){
+      if(muted) return;
+      const n = ctx.createBufferSource();
+      const g = ctx.createGain();
+      const b = ctx.createBuffer(1, ctx.sampleRate*0.25, ctx.sampleRate);
+      const d = b.getChannelData(0);
+      for(let i=0;i<d.length;i++){ d[i] = (Math.random()*2-1) * (1 - i/d.length); }
+      n.buffer = b;
+      g.gain.value = 0.25;
+      n.connect(g); g.connect(ctx.destination);
+      n.start();
+    }
+    function toggle(){ muted = !muted; }
+    function isMuted(){ return muted; }
+    return { bounce, coin, bonk, toggle, isMuted, ctx };
+  })();
+
+  // Game state
+  const GROUND_H = 84;
+  const gravity = 1600;
+  const jumpVel = 640;
+  const holdBoost = 900;
+  let player, obstacles, stars, clouds, hills, tPrev, running = false, paused = false;
+  let speed = 260;
+  let speedMul = 1;
+  let score = 0;
+  let best = Number(localStorage.getItem('jbr_best') || 0);
+  elBest.textContent = best;
+
+  function reset() {
+    player = {
+      x: W*0.2, y: H-GROUND_H-40, r: 22,
+      vy: 0, onGround: true, tilt: 0, color: '#f43f5e'
+    };
+    obstacles = [];
+    stars = [];
+    clouds = makeParallax(6);
+    hills = makeHills(5);
+    speed = 260;
+    speedMul = 1;
+    score = 0;
+    tPrev = performance.now();
+  }
+
+  // Helpers
+  function rand(a,b){ return a + Math.random()*(b-a); }
+
+  function makeParallax(n){
+    const arr = [];
+    for(let i=0;i<n;i++){
+      arr.push({
+        x: rand(0,W), y: rand(20, H*0.45),
+        r: rand(20, 60), spd: rand(12, 26)
+      });
+    }
+    return arr;
+  }
+  function makeHills(n){
+    const arr = [];
+    for(let i=0;i<n;i++){
+      arr.push({
+        x: rand(0,W), w: rand(120, 280), h: rand(40, 120),
+        spd: rand(40, 70), color: i%2? '#34d399' : '#10b981'
+      });
+    }
+    return arr;
+  }
+
+  // Spawners
+  let nextObs = 0, nextStar = 0;
+  function trySpawn(dt){
+    nextObs -= dt; nextStar -= dt;
+    const s = speed * speedMul;
+    if(nextObs <= 0){
+      const h = rand(26, 60);
+      const w = rand(24, 44);
+      obstacles.push({ x: W+40, y: H-GROUND_H-h, w, h, color: '#0ea5e9' });
+      nextObs = rand(0.75, 1.35) * (240 / s) + 0.15;
+    }
+    if(nextStar <= 0){
+      stars.push({ x: W+30, y: rand(H*0.35, H-GROUND_H-90), r: 10, got:false, spin:0 });
+      nextStar = rand(1.2, 2.2) * (260 / s);
+    }
+  }
+
+  // Input
+  let jumpHeld = false;
+  function wantJump(){
+    if(!running){ startGame(); return; }
+    if(paused) return;
+    if(player.onGround){
+      player.vy = -jumpVel;
+      player.onGround = false;
+      AudioFX.bounce();
+    }
+    jumpHeld = true;
+  }
+  function stopJump(){ jumpHeld = false; }
+
+  window.addEventListener('keydown', e=>{
+    if(e.code === 'Space' || e.code === 'ArrowUp') { e.preventDefault(); wantJump(); }
+    if(e.code === 'KeyP'){ paused = !paused; }
+  }, { passive:false });
+  window.addEventListener('keyup', e=>{
+    if(e.code === 'Space' || e.code === 'ArrowUp') stopJump();
+  });
+  gameEl.addEventListener('pointerdown', e=>{ wantJump(); });
+  window.addEventListener('pointerup', e=> stopJump());
+  window.addEventListener('blur', ()=> paused = true);
+
+  startBtn.onclick = () => startGame();
+  retryBtn.onclick = () => { startOverlay.style.display='flex'; gameOverOverlay.style.display='none'; };
+  muteBtn.onclick = () => {
+    AudioFX.toggle();
+    muteBtn.textContent = AudioFX.isMuted()? 'Sound Off' : 'Toggle Sound';
+  };
+  jumpTap.onclick = () => wantJump();
+
+  function startGame(){
+    startOverlay.style.display='none';
+    gameOverOverlay.style.display='none';
+    reset();
+    running = true; paused = false;
+    if(AudioFX.ctx.state === 'suspended') AudioFX.ctx.resume();
+  }
+
+  function endGame(){
+    running = false;
+    AudioFX.bonk();
+    best = Math.max(best, Math.floor(score));
+    localStorage.setItem('jbr_best', String(best));
+    finalScore.textContent = Math.floor(score);
+    finalBest.textContent = best;
+    elBest.textContent = best;
+    gameOverOverlay.style.display='flex';
+  }
+
+  // Draw helpers
+  function drawGround(){
+    // ground strip
+    ctx.fillStyle = 'rgba(3,102,114,.12)';
+    ctx.fillRect(0, H-GROUND_H-6, W, 6);
+    ctx.fillStyle = '#059669';
+    ctx.fillRect(0, H-GROUND_H, W, GROUND_H);
+    // stripes
+    const stripeH = 12;
+    ctx.fillStyle = 'rgba(255,255,255,.08)';
+    for(let y=H-GROUND_H+4; y<H; y+=stripeH){
+      ctx.fillRect(0, y, W, 6);
+    }
+  }
+  function drawClouds(dt){
+    clouds.forEach(c=>{
+      c.x -= c.spd * dt;
+      if(c.x + c.r*2 < -20){ c.x = W + rand(0,200); c.y = rand(10, H*0.45); }
+      // fluffy cloud
+      ctx.fillStyle = 'rgba(255,255,255,.9)';
+      const x = c.x, y = c.y, r = c.r;
+      ctx.beginPath();
+      ctx.arc(x, y, r*0.7, 0, Math.PI*2);
+      ctx.arc(x+r*0.6, y+6, r*0.9, 0, Math.PI*2);
+      ctx.arc(x+r*1.3, y+2, r*0.6, 0, Math.PI*2);
+      ctx.closePath(); ctx.fill();
+    });
+  }
+  function drawHills(dt){
+    hills.forEach(h=>{
+      h.x -= h.spd * dt;
+      if(h.x + h.w < -20){ h.x = W + rand(60,220); h.w = rand(120,280); h.h = rand(40,120); }
+      ctx.fillStyle = h.color;
+      ctx.beginPath();
+      ctx.moveTo(h.x, H-GROUND_H);
+      ctx.quadraticCurveTo(h.x + h.w*0.5, H-GROUND_H - h.h, h.x + h.w, H-GROUND_H);
+      ctx.closePath();
+      ctx.fill();
+    });
+  }
+  function drawPlayer(dt){
+    // physics
+    if(!player.onGround){
+      player.vy += gravity * dt;
+      if(jumpHeld && player.vy < 0) player.vy -= holdBoost * dt;
+      player.y += player.vy * dt;
+      player.tilt = Math.max(-0.35, Math.min(0.5, player.vy / 900));
+    }
+    // ground collision
+    const groundY = H - GROUND_H - player.r;
+    if(player.y > groundY){
+      player.y = groundY; player.vy = 0; player.onGround = true; player.tilt = 0;
+    }
+    // body
+    ctx.save();
+    ctx.translate(player.x, player.y);
+    ctx.rotate(player.tilt);
+    // shadow
+    ctx.fillStyle = 'rgba(0,0,0,.18)';
+    ctx.beginPath();
+    ctx.ellipse(0, player.r+6, player.r*1.1, player.r*0.35, 0, 0, Math.PI*2);
+    ctx.fill();
+    // body gradient
+    const g = ctx.createLinearGradient(-player.r, -player.r, player.r, player.r);
+    g.addColorStop(0, '#fb7185'); g.addColorStop(1, '#f43f5e');
+    ctx.fillStyle = g;
+    ctx.beginPath(); ctx.arc(0,0, player.r, 0, Math.PI*2); ctx.fill();
+    // face, cartoonish
+    ctx.fillStyle = '#fff';
+    ctx.beginPath(); ctx.arc(-7, -2, 7, 0, Math.PI*2); ctx.arc(7, -2, 7, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle = '#111827';
+    ctx.beginPath(); ctx.arc(-7, -2, 3.5, 0, Math.PI*2); ctx.arc(7, -2, 3.5, 0, Math.PI*2); ctx.fill();
+    // smile
+    ctx.strokeStyle = '#111827'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.arc(0, 8, 8, 0.2, Math.PI-0.2); ctx.stroke();
+    ctx.restore();
+  }
+
+  function drawObstacles(dt){
+    const s = speed * speedMul;
+    for(let i=obstacles.length-1;i>=0;i--){
+      const o = obstacles[i];
+      o.x -= s * dt;
+      // draw with playful style
+      ctx.fillStyle = o.color;
+      ctx.save();
+      ctx.translate(o.x + o.w/2, o.y + o.h/2);
+      ctx.rotate(Math.sin(o.x*0.02)*0.1);
+      ctx.fillRect(-o.w/2, -o.h/2, o.w, o.h);
+      ctx.restore();
+
+      // collision
+      const nearestX = Math.max(o.x, Math.min(player.x, o.x+o.w));
+      const nearestY = Math.max(o.y, Math.min(player.y, o.y+o.h));
+      const dx = player.x - nearestX, dy = player.y - nearestY;
+      if(dx*dx + dy*dy < player.r*player.r){ endGame(); return; }
+
+      if(o.x + o.w < -40) obstacles.splice(i,1);
+    }
+  }
+
+  function drawStars(dt){
+    const s = speed * speedMul;
+    for(let i=stars.length-1;i>=0;i--){
+      const st = stars[i];
+      st.x -= s * dt;
+      st.spin += dt*6;
+      // star
+      drawStar(st.x, st.y, 5, st.r, st.r*0.5, st.got? 'rgba(255,255,255,.25)' : '#fbbf24');
+      // collect
+      const dx = player.x - st.x, dy = player.y - st.y;
+      if(!st.got && dx*dx + dy*dy < (player.r+st.r)*(player.r+st.r)){
+        st.got = true; score += 15; AudioFX.coin();
+      }
+      if(st.x + st.r < -40) stars.splice(i,1);
+    }
+  }
+  function drawStar(x,y,points,outer,inner, color){
+    ctx.save();
+    ctx.translate(x,y);
+    ctx.rotate(performance.now()/300 % (Math.PI*2));
+    ctx.beginPath();
+    for(let i=0;i<points*2;i++){
+      const ang = i*Math.PI/points;
+      const r = i%2===0? outer: inner;
+      ctx.lineTo(Math.cos(ang)*r, Math.sin(ang)*r);
+    }
+    ctx.closePath();
+    ctx.fillStyle = color;
+    ctx.shadowColor = 'rgba(0,0,0,.15)';
+    ctx.shadowBlur = 8;
+    ctx.fill();
+    ctx.restore();
+  }
+
+  // Main loop
+  function step(t){
+    requestAnimationFrame(step);
+    if(!running || paused) return;
+    const dt = Math.min(0.033, (t - tPrev)/1000); // clamp for stability
+    tPrev = t;
+
+    // difficulty ramp
+    speedMul += dt * 0.032; // gentle ramp
+    elSpeed.textContent = (speedMul).toFixed(2) + 'x';
+
+    // scoring
+    score += dt * 10 * speedMul;
+    elScore.textContent = Math.floor(score);
+
+    // spawn
+    trySpawn(dt);
+
+    // draw
+    ctx.clearRect(0,0,W,H);
+    drawClouds(dt*0.6);
+    drawHills(dt);
+    drawGround();
+    drawStars(dt);
+    drawObstacles(dt);
+    drawPlayer(dt);
+  }
+  requestAnimationFrame(step);
+
+  // Start on first user gesture to allow audio
+  // Overlays are already visible, so we only reset when starting
+})();
+</script>
+</body>
+</html>
